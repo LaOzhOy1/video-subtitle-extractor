@@ -31,6 +31,13 @@ import platform
 import multiprocessing
 import time
 import pysrt
+import argparse
+import json
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    FastMCP = None
+from backend import mcp_service as mcp_module
 
 
 class SubtitleDetect:
@@ -58,10 +65,10 @@ class SubtitleExtractor:
     视频字幕提取类
     """
 
-    def __init__(self, vd_path, sub_area=None):
+    def __init__(self, vd_path, sub_area=None, is_mcp=False):
         importlib.reload(config)
-        # 线程锁
         self.lock = threading.RLock()
+        self.is_mcp = is_mcp
         # 用户指定的字幕区域位置
         self.sub_area = sub_area
         # 创建字幕检测对象
@@ -162,8 +169,7 @@ class SubtitleExtractor:
 
         if self.sub_area is None:
             print(config.interface_config['Main']['StartDetectWaterMark'])
-            # 询问用户视频是否有水印区域
-            user_input = input(config.interface_config['Main']['checkWaterMark']).strip()
+            user_input = 'y' if self.is_mcp else input(config.interface_config['Main']['checkWaterMark']).strip()
             if user_input == 'y':
                 self.filter_watermark()
                 print(config.interface_config['Main']['FinishDetectWaterMark'])
@@ -1010,16 +1016,16 @@ class SubtitleExtractor:
 
 if __name__ == '__main__':
     multiprocessing.set_start_method("spawn")
-    # 提示用户输入视频路径
-    video_path = input(f"{config.interface_config['Main']['InputVideo']}").strip()
-    # 提示用户输入字幕区域
-    try:
-        y_min, y_max, x_min, x_max = map(int, input(
-            f"{config.interface_config['Main']['ChooseSubArea']} (ymin ymax xmin xmax)：").split())
-        subtitle_area = (y_min, y_max, x_min, x_max)
-    except ValueError as e:
-        subtitle_area = None
-    # 新建字幕提取对象
-    se = SubtitleExtractor(video_path, subtitle_area)
-    # 开始提取字幕
-    se.run()
+    enable_mcp = getattr(config, 'MCP_ENABLED', False)
+    if FastMCP is not None and enable_mcp:
+        mcp_module.start_mcp_from_config(SubtitleExtractor)
+    else:
+        video_path = input(f"{config.interface_config['Main']['InputVideo']}").strip()
+        try:
+            y_min, y_max, x_min, x_max = map(int, input(
+                f"{config.interface_config['Main']['ChooseSubArea']} (ymin ymax xmin xmax)：").split())
+            subtitle_area = (y_min, y_max, x_min, x_max)
+        except ValueError as e:
+            subtitle_area = None
+        se = SubtitleExtractor(video_path, subtitle_area)
+        se.run()
