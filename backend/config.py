@@ -52,6 +52,12 @@ interface_config.read(interface_file, encoding='utf-8')
 # ×××××××××××××××××××× [不要改]读取配置文件 end ××××××××××××××××××××
 
 
+# MCP配置
+MCP_ENABLED = settings_config['DEFAULT'].getboolean('MCP_ENABLED', False)
+MCP_TRANSPORT = settings_config['DEFAULT'].get('MCP_TRANSPORT', 'sse')
+MCP_HOST = settings_config['DEFAULT'].get('MCP_HOST', '0.0.0.0')
+MCP_PORT = settings_config['DEFAULT'].getint('MCP_PORT', 30002)
+
 # ×××××××××××××××××××× [不要改]判断程序运行路径是否合法 start ××××××××××××××××××××
 # 程序运行路径如果包含中文或者空格，运行过程在程序可能会存在bug，因此需要检查路径合法性
 # 默认为合法路径

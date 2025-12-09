@@ -31,6 +31,12 @@ import platform
 import multiprocessing
 import time
 import pysrt
+import argparse
+import json
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    FastMCP = None
 
 
 class SubtitleDetect:
@@ -1010,16 +1016,41 @@ class SubtitleExtractor:
 
 if __name__ == '__main__':
     multiprocessing.set_start_method("spawn")
-    # 提示用户输入视频路径
-    video_path = input(f"{config.interface_config['Main']['InputVideo']}").strip()
-    # 提示用户输入字幕区域
-    try:
-        y_min, y_max, x_min, x_max = map(int, input(
-            f"{config.interface_config['Main']['ChooseSubArea']} (ymin ymax xmin xmax)：").split())
-        subtitle_area = (y_min, y_max, x_min, x_max)
-    except ValueError as e:
-        subtitle_area = None
-    # 新建字幕提取对象
-    se = SubtitleExtractor(video_path, subtitle_area)
-    # 开始提取字幕
-    se.run()
+    enable_mcp = getattr(config, 'MCP_ENABLED', False)
+    transport = getattr(config, 'MCP_TRANSPORT', 'sse')
+    host = getattr(config, 'MCP_HOST', '127.0.0.1')
+    port = getattr(config, 'MCP_PORT', 30002)
+    if FastMCP is not None and enable_mcp and transport in ["stdio", "sse"]:
+        mcp = FastMCP(name="video-subtitle-extractor", host=host, port=port)
+        @mcp.prompt(name="extract_subtitles_prompt", description="Extract SRT from a video. video_path is required; sub_area is optional [ymin,ymax,xmin,xmax].")
+        def describe_extract_subtitles(video_path: str, sub_area: list | tuple | None = None) -> str:
+            return (
+                "Tool: extract_subtitles\n"
+                "Purpose: Extract hard subtitles from a video file into an SRT.\n"
+                "Required: video_path (absolute path to the video).\n"
+                "Optional: sub_area as [ymin,ymax,xmin,xmax] to constrain detection.\n"
+                "If sub_area is omitted, the default detection area is used."
+            )
+        @mcp.tool(name="extract_subtitles")
+        def extract_subtitles_tool(video_path: str, sub_area: list | tuple | None = None) -> dict:
+            subtitle_area = None
+            if sub_area is not None and isinstance(sub_area, (list, tuple)) and len(sub_area) == 4:
+                y_min, y_max, x_min, x_max = sub_area
+                subtitle_area = (int(y_min), int(y_max), int(x_min), int(x_max))
+            se = SubtitleExtractor(video_path, subtitle_area)
+            se.run()
+            return {"srt_path": os.path.splitext(video_path)[0] + ".srt"}
+        if transport == "stdio":
+            mcp.run(transport="stdio")
+        else:
+            mcp.run(transport="sse")
+    else:
+        video_path = input(f"{config.interface_config['Main']['InputVideo']}").strip()
+        try:
+            y_min, y_max, x_min, x_max = map(int, input(
+                f"{config.interface_config['Main']['ChooseSubArea']} (ymin ymax xmin xmax)：").split())
+            subtitle_area = (y_min, y_max, x_min, x_max)
+        except ValueError as e:
+            subtitle_area = None
+        se = SubtitleExtractor(video_path, subtitle_area)
+        se.run()
